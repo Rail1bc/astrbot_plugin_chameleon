@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from astrbot.core.log import LogManager
 logging = LogManager.GetLogger(log_name="[数据库连接]")
 
-_instance = None  # 模块级变量保存实例
+_instance = None
 
 @contextmanager
 def get_dbc(db_file=None):
@@ -66,11 +66,23 @@ class DatabaseConnector:
             conn = sqlite3.connect(self.db_file)
             cursor = conn.cursor()
 
+            # 会话数据表
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS session_data (
+                session_id TEXT NOT NULL,
+                prompt_version INTEGER NOT NULL,
+                history_index INTEGER NOT NULL,
+                tool_num INTEGER NOT NULL,
+                content_num INTEGER NOT NULL,
+                PRIMARY KEY (session_id)
+            )
+            """)
+
             # 创建提示词历史表
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS role_identity_history (
-                session_id INTEGER NOT NULL,
-                role_index INTEGER NOT NULL,
+                session_id TEXT NOT NULL,
+                prompt_version INTEGER NOT NULL,
                 prompt_text TEXT NOT NULL,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (session_id, role_index)
@@ -80,7 +92,7 @@ class DatabaseConnector:
             # 创建对话上下文表
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS history_context (
-                session_id INTEGER NOT NULL,
+                session_id TEXT NOT NULL,
                 history_index INTEGER NOT NULL,
                 role_type TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system')),
                 content TEXT NOT NULL,
@@ -89,6 +101,14 @@ class DatabaseConnector:
             )
             """)
 
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_session_history 
+                ON history_context(session_id, history_index)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_identity_version 
+                ON role_identity_history(session_id, prompt_version)
+            """)
 
             conn.commit()
             logging.debug(f"SQLite 数据库初始化完成，文件路径: {self.db_file}")
@@ -104,6 +124,7 @@ class DatabaseConnector:
     def get_database_connection(self):
         """作为上下文管理器返回数据库连接"""
         conn = sqlite3.connect(self.db_file)
+        conn.execute("PRAGMA journal_mode=WAL")
         conn.row_factory = sqlite3.Row
         try:
             yield conn

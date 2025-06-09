@@ -1,8 +1,8 @@
-from .db_connection import get_dbc
-from .models import RoleIdentity
+from db_connection import get_dbc
+from models import RoleIdentity
 from datetime import datetime
 
-class PromptRepository:
+class RoleRepository:
     @staticmethod
     def save_prompt_version(session_id: int, prompt_text: str) -> RoleIdentity:
         """保存新的提示词版本并返回对象"""
